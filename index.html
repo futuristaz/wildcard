@@ -364,6 +364,23 @@
         })
         .catch(err => console.error(err));
     }
+
+    function resetTimer() {
+      clearInterval(timer);
+      let remaining = REFRESH_INTERVAL;
+      const countdownEl = document.getElementById("countdown");
+
+      timer = setInterval(() => {
+        remaining--;
+        countdownEl.textContent = remaining;
+
+        if (remaining <= 0) {
+          clearInterval(timer);
+          load(); // fetch new data and restart timer
+        }
+      }, 1000);
+    }
+
     load();
   </script>
 </body>
