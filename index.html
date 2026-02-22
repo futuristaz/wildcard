@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="lt">
+
+<head>
+  <meta charset="utf-8" />
+  <title>Wildcard – Balsavimo rezultatai</title>
+
+  <style>
+    :root {
+      --bg: #0f172a;
+      --card: #111827;
+      --text: #e5e7eb;
+      --muted: #9ca3af;
+      --accent: #38bdf8;
+      --border: #1f2933;
+      --row-hover: #020617;
+      --up: #22c55e;
+      --down: #ef4444;
+    }
+
+    * {
+      box-sizing: border-box;
+      font-family: system-ui, -apple-system, Segoe UI, Roboto, Helvetica, Arial, sans-serif;
+    }
+
+    body {
+      margin: 0;
+      min-height: 100vh;
+      background: linear-gradient(135deg, #020617, #0f172a);
+      color: var(--text);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+    }
+
+    .card {
+      width: 100%;
+      max-width: 900px;
+      background: var(--card);
+      border-radius: 14px;
+      box-shadow: 0 20px 40px rgba(0, 0, 0, 0.5);
+      padding: 28px;
+    }
+
+    .header {
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 16px;
+      flex-wrap: wrap;
+      margin-bottom: 18px;
+    }
+
+    h2 {
+      margin: 0;
+      font-size: 1.6rem;
+    }
+
+    .meta {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      font-size: 0.9rem;
+      color: var(--muted);
+      text-align: right;
+    }
+
+    .delta.up {
+      color: var(--up);
+    }
+
+    .delta.down {
+      color: var(--down);
+    }
+
+    .refresh-timer {
+      font-size: 0.85rem;
+      color: var(--muted);
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+    }
+
+    thead th {
+      text-align: left;
+      font-size: 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--muted);
+      padding: 12px 10px;
+      border-bottom: 1px solid var(--border);
+    }
+
+    tbody tr:hover {
+      background: var(--row-hover);
+    }
+
+    td {
+      padding: 14px 10px;
+      border-bottom: 1px solid var(--border);
+      vertical-align: middle;
+    }
+
+    .participant {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+    }
+
+    .participant img {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      object-fit: cover;
+      border: 2px solid var(--border);
+    }
+
+    .votes {
+      font-weight: 500;
+    }
+
+    .votes small {
+      display: block;
+      font-size: 0.75rem;
+      margin-top: 2px;
+    }
+
+    .percentage {
+      min-width: 140px;
+    }
+
+    .bar {
+      background: #020617;
+      border-radius: 999px;
+      overflow: hidden;
+      height: 10px;
+      margin-top: 6px;
+    }
+
+    .bar-fill {
+      height: 100%;
+      background: linear-gradient(90deg, var(--accent), #60a5fa);
+      transition: width 0.6s ease;
+    }
+
+    .percent-label {
+      font-size: 0.8rem;
+      color: var(--muted);
+    }
+
+    .delta {
+      display: inline-block;
+      transition: opacity 0.6s ease;
+    }
+
+    .delta.fade-out {
+      opacity: 0;
+    }
+  </style>
+</head>
+
+<body>
+  <div class="card">
+    <div class="header">
+      <div>
+        <h2>Balsavimo rezultatai</h2>
+        <div class="refresh-timer">
+          Atnaujinama po <strong><span id="countdown">30</span>s</strong>
+        </div>
+      </div>
+
+      <div class="meta">
+        <div>
+          Viso balsų:
+          <strong id="totalVotes">–</strong>
+          <span id="totalDelta"></span>
+        </div>
+      </div>
+    </div>
+
+    <table id="tbl"></table>
+  </div>
+
+  <script>
+    const REFRESH_INTERVAL = 10; // seconds (or 30 if you prefer)
+    let remaining = REFRESH_INTERVAL;
+    let countdownTimer;
+
+    let lastSnapshot = null; // <-- ONLY previous refresh
+
+    let previousVotes = {};
+    let previousTotal = null;
+
+    function cleanName(name) {
+      return name
+        .replace(/\s*\/\/\s*/g, " – ")
+        .replace(/–\s*$/, "")
+        .trim();
+    }
+
+    function formatDelta(delta) {
+      if (!delta) return "";
+      const cls = delta > 0 ? "up" : "down";
+      const sign = delta > 0 ? "+" : "";
+      return `<span class="delta ${cls}">(${sign}${delta})</span>`;
+    }
+
+    function renderTable(data) {
+      const table = document.getElementById("tbl");
+      const total = data.choices.reduce((s, c) => s + c.votes, 0);
+
+      const prevTotals = lastSnapshot
+        ? Object.fromEntries(lastSnapshot.map(c => [c.id, c.votes]))
+        : {};
+
+      const prevTotalVotes = lastSnapshot
+        ? lastSnapshot.reduce((s, c) => s + c.votes, 0)
+        : null;
+
+      // total delta (ONLY since last refresh)
+      const totalDelta =
+        prevTotalVotes === null ? "" : formatDelta(total - prevTotalVotes);
+
+      document.getElementById("totalVotes").textContent =
+        total.toLocaleString();
+      document.getElementById("totalDelta").innerHTML = totalDelta;
+
+      table.innerHTML = `
+    <thead>
+      <tr>
+        <th>Dalyvis</th>
+        <th>Balsai (per ${REFRESH_INTERVAL}s)</th>
+        <th>%</th>
+      </tr>
+    </thead>
+    <tbody></tbody>
+  `;
+
+      const tbody = table.querySelector("tbody");
+
+      data.choices
+        .sort((a, b) => b.votes - a.votes)
+        .forEach(c => {
+          const prevVotes = prevTotals[c.id];
+          const delta =
+            prevVotes === undefined ? "" : formatDelta(c.votes - prevVotes);
+
+          const row = document.createElement("tr");
+          row.innerHTML = `
+        <td>
+          <div class="participant">
+            <img src="${c.image}" alt="${c.name}">
+            ${cleanName(c.name)}
+          </div>
+        </td>
+        <td class="votes">
+          ${c.votes.toLocaleString()}
+          <small>${delta}</small>
+        </td>
+        <td class="percentage">
+          <div class="percent-label">${c.percentage}%</div>
+          <div class="bar">
+            <div class="bar-fill" style="width:${c.percentage}%"></div>
+          </div>
+        </td>
+      `;
+          tbody.appendChild(row);
+        });
+
+      // 🔁 IMPORTANT: overwrite snapshot AFTER render
+      lastSnapshot = data.choices.map(c => ({
+        id: c.id,
+        votes: c.votes
+      }));
+
+      fadeOutDeltas();
+    }
+
+    function loadData() {
+      fetch("https://www.lrt.lt/api/v1/daily-question/2417?t=" + Date.now(), {
+        cache: "no-store"
+      })
+        .then(res => res.json())
+        .then(data => {
+          renderTable(data);
+          resetCountdown();
+        })
+        .catch(console.error);
+    }
+
+    function resetCountdown() {
+      remaining = REFRESH_INTERVAL;
+      document.getElementById("countdown").textContent = remaining;
+
+      clearInterval(countdownTimer);
+      countdownTimer = setInterval(() => {
+        remaining--;
+        document.getElementById("countdown").textContent = remaining;
+
+        if (remaining <= 0) {
+          clearInterval(countdownTimer);
+          loadData();
+        }
+      }, 1000);
+    }
+
+    function fadeOutDeltas() {
+      setTimeout(() => {
+        document
+          .querySelectorAll(".delta")
+          .forEach(el => el.classList.add("fade-out"));
+      }, 2000);
+    }
+
+    loadData();
+  </script>
+</body>
+
+</html>
